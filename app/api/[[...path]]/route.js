@@ -256,7 +256,7 @@ export async function POST(request) {
       // Gerar roteiro (MOCK ou OpenAI)
       let scriptContent
       
-      if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY.includes('emergent')) {
+      if (!openai) {
         // MOCK - Gerar roteiro simulado
         scriptContent = generateMockScript(product, character, format, objective)
       } else {
