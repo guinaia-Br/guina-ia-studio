@@ -95,14 +95,6 @@ export async function POST(request) {
 
     // Rota: Gerar Roteiro
     if (pathname === '/api/generate-script') {
-      const supabase = getSupabaseClient()
-      if (!supabase) {
-        return NextResponse.json(
-          { error: 'Supabase não configurado. Consulte README.md' },
-          { status: 503 }
-        )
-      }
-
       const body = await request.json()
       const { product, character, format, objective, user_id } = body
 
@@ -136,26 +128,49 @@ export async function POST(request) {
 
       const scriptContent = completion.choices[0].message.content
 
-      // Salvar no banco
-      const { data: script, error: dbError } = await supabase
-        .from('scripts')
-        .insert({
+      // Tentar salvar no banco se Supabase estiver configurado
+      const supabase = getSupabaseClient()
+      let script = null
+      let dbError = null
+
+      if (supabase) {
+        const { data: savedScript, error } = await supabase
+          .from('scripts')
+          .insert({
+            product_id: product.id,
+            character,
+            format,
+            objective,
+            content: scriptContent,
+            status: 'completed',
+            user_id
+          })
+          .select()
+          .single()
+
+        script = savedScript
+        dbError = error
+      } else {
+        // Mock script object when Supabase is not configured
+        script = {
+          id: `mock-${Date.now()}`,
           product_id: product.id,
           character,
           format,
           objective,
           content: scriptContent,
           status: 'completed',
-          user_id
-        })
-        .select()
-        .single()
-
-      if (dbError) throw dbError
+          user_id,
+          created_at: new Date().toISOString()
+        }
+      }
 
       return NextResponse.json({
         success: true,
-        script
+        script,
+        supabase_configured: !!supabase,
+        saved_to_database: !!supabase && !dbError,
+        database_error: dbError?.message || null
       })
     }
 
