@@ -84,7 +84,7 @@ Tempo total estimado: 70-100 segundos`
     return `🎬 ROTEIRO DE VÍDEO - FORMATO R7V (7 BLOCOS DETALHADOS)
 Personagem: ${character.toUpperCase()} (${style.tone})
 Produto: ${productName}
-Objetivo: ${objetivo.toUpperCase()}
+Objetivo: ${objective.toUpperCase()}
 
 ─────────────────────────────────────────
 
