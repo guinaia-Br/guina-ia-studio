@@ -342,6 +342,6 @@ export async function GET(request) {
   return NextResponse.json({ 
     message: 'API Guina IA Studio funcionando!',
     supabase_configured: !!getSupabaseClient(),
-    openai_configured: !!process.env.OPENAI_API_KEY
+    openai_configured: !!openai
   })
 }
