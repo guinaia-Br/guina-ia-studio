@@ -95,6 +95,14 @@ export async function POST(request) {
 
     // Rota: Gerar Roteiro
     if (pathname === '/api/generate-script') {
+      const supabase = getSupabaseClient()
+      if (!supabase) {
+        return NextResponse.json(
+          { error: 'Supabase não configurado. Consulte README.md' },
+          { status: 503 }
+        )
+      }
+
       const body = await request.json()
       const { product, character, format, objective, user_id } = body
 
@@ -165,5 +173,9 @@ export async function POST(request) {
 }
 
 export async function GET(request) {
-  return NextResponse.json({ message: 'API Guina IA Studio funcionando!' })
+  return NextResponse.json({ 
+    message: 'API Guina IA Studio funcionando!',
+    supabase_configured: !!getSupabaseClient(),
+    openai_configured: !!process.env.OPENAI_API_KEY
+  })
 }
