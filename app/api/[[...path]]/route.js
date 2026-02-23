@@ -1,104 +1,163 @@
-import { MongoClient } from 'mongodb'
-import { v4 as uuidv4 } from 'uuid'
 import { NextResponse } from 'next/server'
+import OpenAI from 'openai'
+import { createClient } from '@supabase/supabase-js'
 
-// MongoDB connection
-let client
-let db
+// Inicializar OpenAI
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+})
 
-async function connectToMongo() {
-  if (!client) {
-    client = new MongoClient(process.env.MONGO_URL)
-    await client.connect()
-    db = client.db(process.env.DB_NAME)
+// Inicializar Supabase
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+)
+
+// Função auxiliar para criar prompts personalizados
+function createScriptPrompt(product, character, format, objective) {
+  // Definir estilo do personagem
+  const characterStyles = {
+    rafaela: 'Você é Rafaela, uma apresentadora energética e persuasiva. Use linguagem vibrante, empolgante e motivadora. Seja carismática e convincente.',
+    vico: 'Você é Vico, um jovem gamer descontraído. Use linguagem casual, gírias moderadas e referências à cultura pop. Seja autêntico e divertido.',
+    guina: 'Você é Guina, um estrategista analítico. Use linguagem profissional, dados concretos e argumentos lógicos. Seja objetivo e persuasivo.'
   }
-  return db
+
+  // Definir estrutura do formato
+  const formatStructures = {
+    R6U: `Estruture o roteiro em 6 BLOCOS CURTOS:
+
+BLOCO 1 - GANCHO INICIAL (5-10 segundos)
+BLOCO 2 - PROBLEMA/DOR (10-15 segundos)
+BLOCO 3 - APRESENTAÇÃO DO PRODUTO (15-20 segundos)
+BLOCO 4 - BENEFÍCIOS PRINCIPAIS (20-25 segundos)
+BLOCO 5 - PROVA SOCIAL/ARGUMENTO (10-15 segundos)
+BLOCO 6 - CTA FINAL (10-15 segundos)`,
+    
+    R7V: `Estruture o roteiro em 7 BLOCOS DETALHADOS:
+
+BLOCO 1 - GANCHO INICIAL (contexto e atenção)
+BLOCO 2 - DESENVOLVIMENTO (problema expandido)
+BLOCO 3 - TRANSIÇÃO (ponte para solução)
+BLOCO 4 - APRESENTAÇÃO DO PRODUTO (características)
+BLOCO 5 - BENEFÍCIOS E TRANSFORMAÇÃO (impacto)
+BLOCO 6 - PROVA E CREDIBILIDADE (argumentos)
+BLOCO 7 - CTA FINAL (call-to-action forte)`,
+    
+    H1C: `Crie um roteiro CONTÍNUO E NARRATIVO sem divisão em blocos.
+
+O roteiro deve fluir naturalmente seguindo esta ordem:
+- Abertura impactante
+- Desenvolvimento da história/problema
+- Apresentação natural do produto
+- Benefícios integrados à narrativa
+- Argumentos e provas sociais
+- Fechamento com CTA forte
+
+Sem marcações de blocos, apenas um texto corrido e envolvente.`
+  }
+
+  // Definir objetivo da campanha
+  const objectiveGuidance = {
+    vendas: 'FOCO EM VENDAS: Use gatilhos de escassez, urgência e valor. CTA deve ser direto: comprar, adquirir, aproveitar oferta. Enfatize benefícios práticos e ROI.',
+    branding: 'FOCO EM BRANDING: Construa autoridade e conexão emocional. CTA deve ser: conhecer mais, seguir, se conectar. Enfatize valores, missão e diferencial da marca.',
+    review: 'FOCO EM REVIEW: Análise honesta e detalhada. CTA deve ser: experimentar, testar, conhecer. Enfatize prós e contras de forma equilibrada mas positiva.'
+  }
+
+  return `${characterStyles[character]}
+
+${objectiveGuidance[objective]}
+
+PRODUTO:
+Nome: ${product.name}
+Descrição: ${product.description}
+Categoria: ${product.category}
+${product.link ? `Link: ${product.link}` : ''}
+
+FORMATO DO ROTEIRO:
+${formatStructures[format]}
+
+CRIE UM ROTEIRO COMPLETO E DETALHADO seguindo exatamente a estrutura do formato ${format}.
+Seja específico com o produto mencionado.
+Mantenha o tom de voz do personagem ${character}.
+Gere um roteiro pronto para ser usado, com timing e direção emocional.`
 }
 
-// Helper function to handle CORS
-function handleCORS(response) {
-  response.headers.set('Access-Control-Allow-Origin', process.env.CORS_ORIGINS || '*')
-  response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-  response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-  response.headers.set('Access-Control-Allow-Credentials', 'true')
-  return response
-}
-
-// OPTIONS handler for CORS
-export async function OPTIONS() {
-  return handleCORS(new NextResponse(null, { status: 200 }))
-}
-
-// Route handler function
-async function handleRoute(request, { params }) {
-  const { path = [] } = params
-  const route = `/${path.join('/')}`
-  const method = request.method
-
+// POST /api/generate-script
+export async function POST(request) {
   try {
-    const db = await connectToMongo()
+    const { pathname } = new URL(request.url)
 
-    // Root endpoint - GET /api/root (since /api/ is not accessible with catch-all)
-    if (route === '/root' && method === 'GET') {
-      return handleCORS(NextResponse.json({ message: "Hello World" }))
-    }
-    // Root endpoint - GET /api/root (since /api/ is not accessible with catch-all)
-    if (route === '/' && method === 'GET') {
-      return handleCORS(NextResponse.json({ message: "Hello World" }))
-    }
-
-    // Status endpoints - POST /api/status
-    if (route === '/status' && method === 'POST') {
+    // Rota: Gerar Roteiro
+    if (pathname === '/api/generate-script') {
       const body = await request.json()
-      
-      if (!body.client_name) {
-        return handleCORS(NextResponse.json(
-          { error: "client_name is required" }, 
+      const { product, character, format, objective, user_id } = body
+
+      // Validar dados
+      if (!product || !character || !format || !objective || !user_id) {
+        return NextResponse.json(
+          { error: 'Dados incompletos' },
           { status: 400 }
-        ))
+        )
       }
 
-      const statusObj = {
-        id: uuidv4(),
-        client_name: body.client_name,
-        timestamp: new Date()
-      }
+      // Criar prompt personalizado
+      const prompt = createScriptPrompt(product, character, format, objective)
 
-      await db.collection('status_checks').insertOne(statusObj)
-      return handleCORS(NextResponse.json(statusObj))
+      // Gerar roteiro com OpenAI
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: 'Você é um especialista em criação de roteiros para vídeos de marketing e vendas. Crie roteiros persuasivos, envolventes e prontos para uso.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.8,
+        max_tokens: 2000
+      })
+
+      const scriptContent = completion.choices[0].message.content
+
+      // Salvar no banco
+      const { data: script, error: dbError } = await supabase
+        .from('scripts')
+        .insert({
+          product_id: product.id,
+          character,
+          format,
+          objective,
+          content: scriptContent,
+          status: 'completed',
+          user_id
+        })
+        .select()
+        .single()
+
+      if (dbError) throw dbError
+
+      return NextResponse.json({
+        success: true,
+        script
+      })
     }
 
-    // Status endpoints - GET /api/status
-    if (route === '/status' && method === 'GET') {
-      const statusChecks = await db.collection('status_checks')
-        .find({})
-        .limit(1000)
-        .toArray()
-
-      // Remove MongoDB's _id field from response
-      const cleanedStatusChecks = statusChecks.map(({ _id, ...rest }) => rest)
-      
-      return handleCORS(NextResponse.json(cleanedStatusChecks))
-    }
-
-    // Route not found
-    return handleCORS(NextResponse.json(
-      { error: `Route ${route} not found` }, 
+    return NextResponse.json(
+      { error: 'Rota não encontrada' },
       { status: 404 }
-    ))
-
+    )
   } catch (error) {
-    console.error('API Error:', error)
-    return handleCORS(NextResponse.json(
-      { error: "Internal server error" }, 
+    console.error('Erro na API:', error)
+    return NextResponse.json(
+      { error: error.message || 'Erro interno do servidor' },
       { status: 500 }
-    ))
+    )
   }
 }
 
-// Export all HTTP methods
-export const GET = handleRoute
-export const POST = handleRoute
-export const PUT = handleRoute
-export const DELETE = handleRoute
-export const PATCH = handleRoute
+export async function GET(request) {
+  return NextResponse.json({ message: 'API Guina IA Studio funcionando!' })
+}
