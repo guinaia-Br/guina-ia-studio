@@ -36,6 +36,7 @@ export default function HistoryPage() {
         .select('*, products(*)')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
+        .limit(100)
       
       if (error) throw error
       setProjects(data || [])
