@@ -2,10 +2,13 @@ import { NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import { createClient } from '@supabase/supabase-js'
 
-// Inicializar OpenAI
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-})
+// Inicializar OpenAI apenas se a chave estiver configurada
+let openai = null
+if (process.env.OPENAI_API_KEY && !process.env.OPENAI_API_KEY.includes('your_')) {
+  openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY
+  })
+}
 
 // Inicializar Supabase com verificação
 function getSupabaseClient() {
